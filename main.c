@@ -26,8 +26,8 @@ int main(void) {
 	// ------------------------------------------------------------
 	// 1. CLOCK ENABLES
 	// ------------------------------------------------------------
-	// Bit 8 = GPIOI, Bit 1 = GPIOB, Bit 6 = GPIOG
-	 RCC->AHB1ENR |= (1UL << 8) | (1UL << 1) | (1UL << 6);
+	// Bit 8 = GPIOI, Bit 1 = GPIOB, Bit 6 = GPIOG, Bit 7 = GPIOH
+	 RCC->AHB1ENR |= (1UL << 8) | (1UL << 1) | (1UL << 6) | (1UL << 7);
 	// Bit 14 enables SYSCFG clock (for routing GPIO to EXTI)
 	 RCC->APB2ENR |= (1UL << 14);
 	// Bit 0 enables TIM2 clock on the APB1 bus
@@ -40,7 +40,7 @@ int main(void) {
 	 GPIOI->MODER &= ~(3UL << (3 * 2));
 	 GPIOI->MODER |= (1UL << (3 * 2));
 	 GPIOI->OTYPER &= ~(1UL << 3);
-	// Switch (PI2) -> Input with Pull-up
+	// Switch 2 (PI2) -> Input with Pull-up
 	 GPIOI->MODER &= ~(3UL << (2 * 2));
 	 GPIOI->PUPDR &= ~(3UL << (2 * 2));
 	 GPIOI->PUPDR |= (1UL << (2 * 2));
@@ -52,6 +52,14 @@ int main(void) {
 	 GPIOG->MODER &= ~(3UL << (7 * 2));
 	 GPIOG->MODER |= (1UL << (7 * 2));
 	 GPIOG->OTYPER &= ~(1UL << 7);
+	 // Switch 2 (PI0, D5) -> Output
+	 GPIOI->MODER &= ~(3UL);
+	 GPIOI->PUPDR &= (~3UL);
+	 GPIOI->PUPDR |= (1UL);
+	 // LED 4 (PH6, D6) -> Push-Pull output
+	 GPIOH->MODER &= 0;
+	 GPIOH->MODER |= (1UL << (2 * 6));
+	 GPIOH->OTYPER &= ~(1UL << 6);
 
 	// ------------------------------------------------------------
 	// 3. EXTI INTERRUPT & PRIORITY CONFIGURATION (PI2)
@@ -72,8 +80,21 @@ int main(void) {
 
 
 	// ------------------------------------------------------------
-	// 4. EXT0 INTERRUPT & PRIORITY CONFIGURATION.
+	// 4. EXTI INTERRUPT & PRIORITY CONFIGURATION (PI0, or D5 on the board)
 	// ------------------------------------------------------------
+	 // Route Port I Pin 0 to EXTI0 (Bits [3:0] in EXTICT[0] gets 0x8
+	 SYSCFG->EXTICR[0] &= ~(0xFUL); // no shifting since we are working with EXTI0
+	 SYSCFG->EXTICR[0] |= (0x8UL);
+	 EXTI->IMR |= (1UL); // Unmasks line 0
+	 EXTI->FTSR |= 1UL; // Fall on button press
+	 EXTI->RTSR &= ~(1UL); // Disable rise trigger
+	 // EXTI0 is the IRQ number 6 in the NVIC table
+	 // NVIC->IP is a byte array indexed by IRQ number. EXTI0's priority byte is IP[0]
+	 // Only upper 4 bits are implemented (16 levels), and lower # = higher priority
+	 NVIC->IP[6] |= (2UL << 4);
+	 // Enable IRQ6
+	 NVIC->ISER[0] |= (0b1 << 8);
+
 
 	// ------------------------------------------------------------
 	// 5. TIMER 2 CONFIGURATION (~250ms update window)
