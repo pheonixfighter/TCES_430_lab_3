@@ -52,9 +52,9 @@ int main(void) {
 	 GPIOG->MODER &= ~(3UL << (7 * 2));
 	 GPIOG->MODER |= (1UL << (7 * 2));
 	 GPIOG->OTYPER &= ~(1UL << 7);
-	 // Switch 2 (PI0, D5) -> Output
+	 // Switch 2 (PI0, D5) -> Input with output
 	 GPIOI->MODER &= ~(3UL);
-	 GPIOI->PUPDR &= (~3UL);
+	 GPIOI->PUPDR &= ~(3UL);
 	 GPIOI->PUPDR |= (1UL);
 	 // LED 4 (PH6, D6) -> Push-Pull output
 	 GPIOH->MODER &= 0;
@@ -93,7 +93,7 @@ int main(void) {
 	 // Only upper 4 bits are implemented (16 levels), and lower # = higher priority
 	 NVIC->IP[6] |= (2UL << 4);
 	 // Enable IRQ6
-	 NVIC->ISER[0] |= (0b1 << 8);
+	 NVIC->ISER[0] |= (1UL << 6); // Enable IRQ 6
 
 
 	// ------------------------------------------------------------
@@ -176,6 +176,26 @@ void EXTI2_IRQHandler(void) {
 		EXTI->PR = (1UL << 2); // Clear EXTI pending flag
 		NVIC->ICPR[0] = (1UL << 8); // Clear NVIC Pending bit for IRQ8
 		exti_triggered = 0; // Drop halt flag, allowing LED 2/3 to resume instantly
+	}
+}
+
+void EXTI0_IRQHandler(void) {
+	if (EXTI->PR & 1UL) {
+		EXTI->PR = 1UL;  // Clears EXTI pending flag
+		exti_triggered = 1; // Raise halt flag for the main background thread
+		// Executes the response for triggering the I0 interrupt
+		// Will blink LED_4 5 times
+		for (int i = 0; i < 10; i++){
+			if (i % 2 == 0) {
+				GPIOH->BSRR = (1UL << 6);
+			} else {
+				GPIOH->BSRR = (1UL << (6 + 16));
+			}
+			simple_delay(800000);
+		}
+		EXTI->PR = (1UL);
+		NVIC->ICPR[0] = (1UL << 6); // Clears NVIC pending bit for IRQ 6
+		exti_triggered = 0;
 	}
 }
 
