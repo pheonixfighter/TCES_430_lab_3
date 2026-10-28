@@ -179,6 +179,9 @@ void EXTI2_IRQHandler(void) {
 	}
 }
 
+/**
+ * Interrupt service routine for GPIO line 0.
+ */
 void EXTI0_IRQHandler(void) {
 	if (EXTI->PR & 1UL) {
 		EXTI->PR = 1UL;  // Clears EXTI pending flag
@@ -198,5 +201,63 @@ void EXTI0_IRQHandler(void) {
 		exti_triggered = 0;
 	}
 }
+
+/**
+ * Initializes the following pins for the LCD:
+ * 	-RS: D0 (C7)
+ * 	-R/W: D1 (C6)
+ * 	-Enable: D11 (G6)
+ *
+ * 	-Data 4: D12 (B14)
+ * 	-Data 5: D13 (I1)
+ * 	-Data 6: D14 (B9)
+ * 	-Data 7: D15 (B8)
+ */
+void initializeLCDPins(void) {
+	// Initializes D0 (C7)
+	GPIOC->MODER &= ~(3UL << (7 * 2));
+	GPIOC->MODER |= (1UL << (7 * 2));
+	GPIOC->OTYPER |= (1UL << 7);
+
+	// INitializes D1 (C6)
+	GPIOC->MODER &= ~(3UL << (6 * 2));
+	GPIOC->MODER |= (1UL << (6 * 2));
+	GPIOC->OTYPER |= (1UL << 6);
+
+	// Initializes D2 (G6)
+	GPIOG->MODER &= ~(3UL << (6 * 2));
+	GPIOG->MODER |= (1UL << (6 * 2));
+	GPIOG->MODER |= (1UL << 7);
+
+	// Initializes D12 (B14)
+	GPIOB->MODER &= ~(3UL << (14 * 2));
+	GPIOB->MODER |= (1UL << 14 * 2);
+	GPIOB->OTYPER |= (1UL << 14);
+
+	// Initializes D13 (I1)
+	GPIOI->MODER &= ~(3UL << (1 * 2));
+	GPIOI->MODER |= (1UL << (1 * 2));
+	GPIOI->OTYPER |= (1UL << 2);
+
+	// INitializes D14 (B9)
+	GPIOB->MODER &= ~(3UL << (9 * 2));
+	GPIOB->MODER |= (1UL << (9 * 2));
+	GPIOB->OTYPER |= (1UL << 9);
+
+	// Initializes D15 (B8)
+	GPIOB->MODER &= ~(3UL << (8 * 2));
+	GPIOB->MODER |= (1UL << (8 * 2));
+	GPIOB->OTYPER |= (1UL << 8);
+}
+
+
+/**
+ * NEXT STEPS:
+ * - Send nibble
+ * - Send Command
+ * - send character/letter
+ * - send string
+ * - reset LCD
+ */
 
 
