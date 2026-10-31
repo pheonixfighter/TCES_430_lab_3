@@ -15,6 +15,9 @@ typedef enum {
 volatile uint8_t exti_triggered = 0;
 
 
+int BSRRShift(uint8_t);
+
+
 void simple_delay(uint32_t count) {
 	while (count--) {
 			__asm__("NOP");
@@ -248,9 +251,46 @@ void initializeLCDPins(void) {
 	GPIOB->MODER &= ~(3UL << (8 * 2));
 	GPIOB->MODER |= (1UL << (8 * 2));
 	GPIOB->OTYPER |= (1UL << 8);
+
+
+	// initializing data pins to high speed pin mode
+	GPIOB->OSPEEDR |= (0x3 << (14 * 2));
+	GPIOI->OSPEEDR |= (0x3 << (1 * 2));
+	GPIOB->OSPEEDR |= (0x3 << (9 * 2));
+	GPIOB->OSPEEDR |= (Ox3 << (8 * 2));
 }
 
 
+
+/**
+ *
+ */
+void sendNibble(uint8_t nibble, uint8_t RS){
+	// Establishes RS pin line state
+	GPIOC->BSRR |= (1 << (7 + BSRRShift(RS)));
+
+	// Parses Data bits 0 - 3
+	// Assigns Pin 3
+	GPIOB->BSRR |= (1 << (7 + BSRRShift(nibble >> 3)));
+
+	// Assigns pin 2
+	GPIOI->BSRR |= (1 << (7 + BSRRShift((nibble >> 2) & 1UL)));
+
+	// Assigns pin 1
+	GPIOB->BSRR |= (1 << (7 + BSRRShift((nibble >> 1) & 1UL)));
+
+	// Assigns pin -
+	GPIOB->BSRR |= (1 << (7 + BSRRShift((nivvle & 1UL))));
+}
+
+
+int BSRRShift(uint8_t outputBit){
+	if (outputBit){
+		return 0;
+	} else {
+		return 16;
+	}
+}
 /**
  * NEXT STEPS:
  * - Send nibble
