@@ -1,5 +1,7 @@
 #include <stdint.h>
 #include "stm32f7xx.h"
+
+
 #if !defined(__SOFT_FP__) && defined(__ARM_FP)
 	#warning "FPU is not initialized, but the project is compiling for an FPU. Please initialize the FPU before use."
 #endif
@@ -13,9 +15,6 @@ typedef enum {
 
 // Volatile variable to pass the halt state between the main loop and the ISR
 volatile uint8_t exti_triggered = 0;
-
-
-int BSRRShift(uint8_t);
 
 
 void simple_delay(uint32_t count) {
@@ -291,6 +290,8 @@ int BSRRShift(uint8_t outputBit){
 		return 16;
 	}
 }
+
+
 /**
  * NEXT STEPS:
  * - Send nibble
