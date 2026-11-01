@@ -1,5 +1,6 @@
 #include <stdint.h>
 #include "stm32f7xx.h"
+#include "LCD.h"
 
 
 #if !defined(__SOFT_FP__) && defined(__ARM_FP)
@@ -10,8 +11,16 @@
 typedef enum {
 	BLINK_LED2, // Flash LED 2 on PB4 (5 times)
 	BLINK_LED3, // Flash LED 3 on PG7 (8 times)
-	PAUSE_STATE // 2-second pause before restarting
+	PAUSE_STATE, // 2-second pause before restarting
+	// Next two states were added so that we know which interrupt we're on for the LCD printing
+	INT1_FLASH,
+	INT2_FLASH
 } SequenceState;
+
+
+// Function prototype for printing to LCD
+void printStateToLCD(SequenceState, uint8_t);
+
 
 // Volatile variable to pass the halt state between the main loop and the ISR
 volatile uint8_t exti_triggered = 0;
@@ -28,8 +37,8 @@ int main(void) {
 	// ------------------------------------------------------------
 	// 1. CLOCK ENABLES
 	// ------------------------------------------------------------
-	// Bit 8 = GPIOI, Bit 1 = GPIOB, Bit 6 = GPIOG, Bit 7 = GPIOH
-	 RCC->AHB1ENR |= (1UL << 8) | (1UL << 1) | (1UL << 6) | (1UL << 7);
+	// Bit 8 = GPIOI, Bit 1 = GPIOB, Bit 6 = GPIOG, Bit 7 = GPIOH, Bit 3 = GPIOC
+	 RCC->AHB1ENR |= (1UL << 8) | (1UL << 1) | (1UL << 6) | (1UL << 7) | (1UL << 2);
 	// Bit 14 enables SYSCFG clock (for routing GPIO to EXTI)
 	 RCC->APB2ENR |= (1UL << 14);
 	// Bit 0 enables TIM2 clock on the APB1 bus
@@ -106,6 +115,10 @@ int main(void) {
 	TIM2->SR &= ~(1UL << 0);
 	TIM2->CR1 |= (1UL << 0);
 
+	// Start LCD
+	LCDInit();
+
+
 
 	SequenceState current_state = BLINK_LED2;
 	uint8_t toggle_count = 0;
@@ -138,23 +151,25 @@ int main(void) {
 				break;
 			case BLINK_LED3:
 				if (toggle_count < 16) { // 8 blinks = 16 toggles
-				 pin_state = !pin_state;
-				if (pin_state) GPIOG->BSRR = (1UL << 7);
-				else GPIOG->BSRR = (1UL << (7 + 16));
-				 toggle_count++;
+					 pin_state = !pin_state;
+					 if (pin_state) GPIOG->BSRR = (1UL << 7);
+					 else GPIOG->BSRR = (1UL << (7 + 16));
+					 toggle_count++;
 				 } else {
-				 GPIOG->BSRR = (1UL << (7 + 16));
-				 toggle_count = 0;
-				pin_state = 0;
-				 TIM2->ARR = 2000; // Switch to 2-second pause duration
-				 current_state = PAUSE_STATE;
+					 GPIOG->BSRR = (1UL << (7 + 16));
+					 toggle_count = 0;
+					 pin_state = 0;
+					 TIM2->ARR = 2000; // Switch to 2-second pause duration
+					 current_state = PAUSE_STATE;
 				 }
 				break;
+			default: // Added to avoid copiler warnings
 			case PAUSE_STATE:
 				TIM2->ARR = 250; // Restore standard blink interval speed
 				current_state = BLINK_LED2;
 				break;
 			}
+			if (toggle_count % 2 == 0) printStateToLCD(current_state, toggle_count);
 		 }
 	}
 }
@@ -164,20 +179,25 @@ int main(void) {
 void EXTI2_IRQHandler(void) {
 	if (EXTI->PR & (1UL << 2)) {
 		EXTI->PR = (1UL << 2); // Clear EXTI pending flag
-		exti_triggered = 1; // Raise halt flag for the main background thread
+		__disable_irq(); // Interrupts disabled to allow the exti to trigger without getting interrupted by ITR2
+		exti_triggered++; // Raise halt flag for the main background thread
+		__enable_irq();
 		// Execute the emergency sequence: 3 blinks on LED 1 (PI3)
 		// 3 complete blinks = 6 alternate toggles
 		for (int i = 0; i < 6; i++) {
 			if (i % 2 == 0) {
-			 GPIOI->BSRR = (1UL << 3); // Turn LED 1 ON
+				GPIOI->BSRR = (1UL << 3); // Turn LED 1 ON
+				printStateToLCD(INT2_FLASH, i);
 			} else {
-			 GPIOI->BSRR = (1UL << (3 + 16)); // Turn LED 1 OFF
+				GPIOI->BSRR = (1UL << (3 + 16)); // Turn LED 1 OFF
 			}
 			simple_delay(800000);
 		}
 		EXTI->PR = (1UL << 2); // Clear EXTI pending flag
 		NVIC->ICPR[0] = (1UL << 8); // Clear NVIC Pending bit for IRQ8
-		exti_triggered = 0; // Drop halt flag, allowing LED 2/3 to resume instantly
+		__disable_irq(); // Interrupts disabled to allow the exti to trigger without getting interrupted by ITR2
+		exti_triggered--; // Drop halt flag, allowing LED 2/3 to resume instantly
+		__enable_irq();
 	}
 }
 
@@ -187,12 +207,15 @@ void EXTI2_IRQHandler(void) {
 void EXTI0_IRQHandler(void) {
 	if (EXTI->PR & 1UL) {
 		EXTI->PR = 1UL;  // Clears EXTI pending flag
-		exti_triggered = 1; // Raise halt flag for the main background thread
+		__disable_irq(); // Interrupts disabled to allow the exti to trigger without getting interrupted by ITR2
+		exti_triggered++; // Raise halt flag for the main background thread
+		__enable_irq();
 		// Executes the response for triggering the I0 interrupt
 		// Will blink LED_4 5 times
 		for (int i = 0; i < 10; i++){
 			if (i % 2 == 0) {
 				GPIOH->BSRR = (1UL << 6);
+				printStateToLCD(INT2_FLASH, i);
 			} else {
 				GPIOH->BSRR = (1UL << (6 + 16));
 			}
@@ -200,105 +223,103 @@ void EXTI0_IRQHandler(void) {
 		}
 		EXTI->PR = (1UL);
 		NVIC->ICPR[0] = (1UL << 6); // Clears NVIC pending bit for IRQ 6
-		exti_triggered = 0;
+		__disable_irq(); // Interrupts disabled to allow the exti to trigger without getting interrupted by ITR2
+		exti_triggered--;
+		__enable_irq();
 	}
 }
 
-/**
- * Initializes the following pins for the LCD:
- * 	-RS: D0 (C7)
- * 	-R/W: D1 (C6)
- * 	-Enable: D11 (G6)
- *
- * 	-Data 4: D12 (B14)
- * 	-Data 5: D13 (I1)
- * 	-Data 6: D14 (B9)
- * 	-Data 7: D15 (B8)
- */
-void initializeLCDPins(void) {
-	// Initializes D0 (C7)
-	GPIOC->MODER &= ~(3UL << (7 * 2));
-	GPIOC->MODER |= (1UL << (7 * 2));
-	GPIOC->OTYPER |= (1UL << 7);
-
-	// INitializes D1 (C6)
-	GPIOC->MODER &= ~(3UL << (6 * 2));
-	GPIOC->MODER |= (1UL << (6 * 2));
-	GPIOC->OTYPER |= (1UL << 6);
-
-	// Initializes D2 (G6)
-	GPIOG->MODER &= ~(3UL << (6 * 2));
-	GPIOG->MODER |= (1UL << (6 * 2));
-	GPIOG->MODER |= (1UL << 7);
-
-	// Initializes D12 (B14)
-	GPIOB->MODER &= ~(3UL << (14 * 2));
-	GPIOB->MODER |= (1UL << 14 * 2);
-	GPIOB->OTYPER |= (1UL << 14);
-
-	// Initializes D13 (I1)
-	GPIOI->MODER &= ~(3UL << (1 * 2));
-	GPIOI->MODER |= (1UL << (1 * 2));
-	GPIOI->OTYPER |= (1UL << 2);
-
-	// INitializes D14 (B9)
-	GPIOB->MODER &= ~(3UL << (9 * 2));
-	GPIOB->MODER |= (1UL << (9 * 2));
-	GPIOB->OTYPER |= (1UL << 9);
-
-	// Initializes D15 (B8)
-	GPIOB->MODER &= ~(3UL << (8 * 2));
-	GPIOB->MODER |= (1UL << (8 * 2));
-	GPIOB->OTYPER |= (1UL << 8);
 
 
-	// initializing data pins to high speed pin mode
-	GPIOB->OSPEEDR |= (0x3 << (14 * 2));
-	GPIOI->OSPEEDR |= (0x3 << (1 * 2));
-	GPIOB->OSPEEDR |= (0x3 << (9 * 2));
-	GPIOB->OSPEEDR |= (Ox3 << (8 * 2));
-}
+void printStateToLCD(SequenceState state, uint8_t cycleNumber){
+
+	// Determines flash number
+	uint8_t flash = cycleNumber / 2;
+
+	// Since there should always be less than 10 flashes,
+	// we are using character/integer algebra to store the
+	// flash
+	char flashChar = '0' + flash;
 
 
+	char* color;
+	uint8_t colorCharSize;
+	// Determines output light color for the string
+	switch (state){
+	case BLINK_LED2:
+		color = "RED";
+		colorCharSize = 3;
+		break;
+	case BLINK_LED3:
+		color = "GRN";
+		colorCharSize = 3;
+		break;
+	case PAUSE_STATE:
+		color = "NIL";
+		colorCharSize = 3;
+		break;
+	case INT1_FLASH:
+		color = "YEL";
+		colorCharSize = 3;
+		break;
+	case INT2_FLASH:
+		color = "LGHT";
+		colorCharSize = 4;
+		break;
+	}
 
-/**
- *
- */
-void sendNibble(uint8_t nibble, uint8_t RS){
-	// Establishes RS pin line state
-	GPIOC->BSRR |= (1 << (7 + BSRRShift(RS)));
+	// Figures out text to use for the state display
+	char* stateString;
+	uint8_t stateCharSize;
 
-	// Parses Data bits 0 - 3
-	// Assigns Pin 3
-	GPIOB->BSRR |= (1 << (7 + BSRRShift(nibble >> 3)));
-
-	// Assigns pin 2
-	GPIOI->BSRR |= (1 << (7 + BSRRShift((nibble >> 2) & 1UL)));
-
-	// Assigns pin 1
-	GPIOB->BSRR |= (1 << (7 + BSRRShift((nibble >> 1) & 1UL)));
-
-	// Assigns pin -
-	GPIOB->BSRR |= (1 << (7 + BSRRShift((nivvle & 1UL))));
-}
-
-
-int BSRRShift(uint8_t outputBit){
-	if (outputBit){
-		return 0;
+	if (state == BLINK_LED2 || state == BLINK_LED3){
+		stateString = "NOR";
+		stateCharSize = 3;
+	} else if (state == INT1_FLASH) {
+		stateString = "INT1";
+		stateCharSize = 4;
 	} else {
-		return 16;
+		stateString = "INT2";
+		stateCharSize = 4;
 	}
+
+	// Creates string that will be sent to the LCD
+	// 6 is added to the end to refer to
+	// (2 chars) * (2 arrows) + (1 flash number char) + (1 null char
+	uint8_t stringSize = stateCharSize + colorCharSize + 6;
+	char stringToSend[stringSize];
+
+	// puts the state in the stringToSend along with the arrow
+	for(int i = 0; i < stateCharSize; i++){
+		stringToSend[i] = *(stateString + i);
+	}
+
+	// adds first arrow
+	stringToSend[stateCharSize] = '-';
+	stringToSend[stateCharSize + 1] = '>';
+
+	// Adds the light name/color
+	uint8_t colorCharOffset = stateCharSize + 2;
+	for(int i = 0; i < colorCharSize; i++){
+		stringToSend[i + colorCharOffset] = *(color + i);
+	}
+
+	uint8_t postColorOffset = colorCharOffset + colorCharSize;
+	// Adds the second arrow
+	stringToSend[postColorOffset] = '-';
+	stringToSend[postColorOffset + 1] = '>';
+
+	// Adds the number and null character to colorCharOffset
+	stringToSend[postColorOffset + 2] = flashChar;
+	stringToSend[postColorOffset + 3] = '\0';
+
+
+	sendCommand(0x01); // Clears screen
+	TIM3_DelayMs(2);
+	sendCommand(0x80);
+	TIM3_DelayMs(2);
+	sendString(stringToSend);
+
 }
-
-
-/**
- * NEXT STEPS:
- * - Send nibble
- * - Send Command
- * - send character/letter
- * - send string
- * - reset LCD
- */
 
 

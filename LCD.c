@@ -1,38 +1,37 @@
-
 #include <stdint.h>
 #include "LCD.h"
 #include "stm32f7xx.h"
 
-void TIM2Init(void){
-	// enable TIM2 clock
-	RCC->APB1ENR |= RCC_APB1ENR_TIM2EN;
+void TIM3Init(void){
+	// enable TIM3 clock
+	RCC->APB1ENR |= RCC_APB1ENR_TIM3EN;
 
 	// Setting the prescaler for the clock to 1 kHZ
-	TIM2->PSC = (16000 - 1);
+	TIM3->PSC = (16000 - 1);
 
 	// Auto-reload register cleared to allow scaling inside the delay function
-	TIM2->ARR = 0;
+	TIM3->ARR = 0;
 
 	// Forcing an update to latch prescaler into registers
-	TIM2->EGR |= TIM_EGR_UG;
-	TIM2->SR = 0; // resets for the timer to start
+	TIM3->EGR |= TIM_EGR_UG;
+	TIM3->SR = 0; // resets for the timer to start
 
 }
 
 
-void TIM2_DelayMs(uint32_t miliseconds){
+void TIM3_DelayMs(uint32_t miliseconds){
 	if (miliseconds == 0) return;
 
 
-	TIM2->CNT = 0; // Resets counTer to 0
-	TIM2->ARR = miliseconds; // Sets the duration in miliseconds
-	TIM2->CR1 |= TIM_CR1_CEN; // Enables counter
+	TIM3->CNT = 0; // Resets counTer to 0
+	TIM3->ARR = miliseconds; // Sets the duration in miliseconds
+	TIM3->CR1 |= TIM_CR1_CEN; // Enables counter
 
 	// Polls the Update Interrupt Flag (UIF) until the counter hits the ARR target match
-	while (!(TIM2->SR & TIM_SR_UIF));
+	while (!(TIM3->SR & TIM_SR_UIF));
 
-	TIM2->SR &= ~TIM_SR_UIF; // Clears the UIF flag for the next execution
-	TIM2->CR1 &= ~TIM_CR1_CEN; // Stops TIM2 to save power
+	TIM3->SR &= ~TIM_SR_UIF; // Clears the UIF flag for the next execution
+	TIM3->CR1 &= ~TIM_CR1_CEN; // Stops TIM3 to save power
 }
 
 
@@ -114,9 +113,9 @@ void sendNibble(uint8_t nibble, uint8_t RS){
 
 	// Cycle enable pulse to send data
 	GPIOG->BSRR |= (1 << (6 + BSRRShift(1))); // Sets enable high
-	TIM2_DelayMs(2);
+	TIM3_DelayMs(2);
 	GPIOG->BSRR |= (1 << (6 + BSRRShift(0))); // Sets enable high
-	TIM2_DelayMs(2);
+	TIM3_DelayMs(2);
 }
 
 
@@ -141,25 +140,25 @@ void sendData(uint8_t data) {
 
 
 void LCDInit(void){
-	// initializes the TIM2 clock
-#ifndef TIM2_INITIALIZED
-	TIM2Init();
+	// initializes the TIM3 clock
+#ifndef TIM3_INITIALIZED
+	TIM3Init();
 #endif
 	initializeLCDPins();
 
-	TIM2_DelayMs(100);
+	TIM3_DelayMs(100);
 
 	// standard setup for HD44780 display
 	sendNibble(0x03, 0);
-	TIM2_DelayMs(2);
+	TIM3_DelayMs(2);
 	sendNibble(0x03, 0);
-	TIM2_DelayMs(10);
+	TIM3_DelayMs(10);
 	sendNibble(0x03, 0);
-	TIM2_DelayMs(2);
+	TIM3_DelayMs(2);
 	sendNibble(0x02, 0); // Activates 4-bit projile structure
-	TIM2_DelayMs(2);
+	TIM3_DelayMs(2);
 
-	// Opational profile parameters
+	// Operational profile parameters
 	sendCommand(0x28); // Configures 4-bit mode with 2 lines of selection layout and a 5X8 font
 	sendCommand(0x0C); // Display ON, cursor block hidden
 	sendCommand(0x06);

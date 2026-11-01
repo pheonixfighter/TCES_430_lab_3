@@ -8,9 +8,9 @@
 #ifndef LCD_H_
 #define LCD_H_
 
-void TIM2Init(void);
+void TIM3Init(void);
 
-void TIM2_DelayMs(uint32_t);
+void TIM3_DelayMs(uint32_t);
 
 void initializeLCDPins(void);
 
