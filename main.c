@@ -233,6 +233,8 @@ void EXTI0_IRQHandler(void) {
 
 void printStateToLCD(SequenceState state, uint8_t cycleNumber){
 
+	// interrupts disabled to prevent an iterrupt messing up the writing process
+	__disable_irq();
 	// Determines flash number
 	uint8_t flash = cycleNumber / 2;
 
@@ -278,6 +280,9 @@ void printStateToLCD(SequenceState state, uint8_t cycleNumber){
 	} else if (state == INT1_FLASH) {
 		stateString = "INT1";
 		stateCharSize = 4;
+	} else if (state == PAUSE_STATE){
+		stateString = "PAUSE";
+		stateCharSize = 5;
 	} else {
 		stateString = "INT2";
 		stateCharSize = 4;
@@ -320,6 +325,7 @@ void printStateToLCD(SequenceState state, uint8_t cycleNumber){
 	TIM3_DelayMs(2);
 	sendString(stringToSend);
 
+	__enable_irq();
 }
 
 
